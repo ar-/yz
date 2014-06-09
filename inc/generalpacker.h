@@ -2179,6 +2179,7 @@ public:
 	};
 
 	static int pg_main(int argc, char** argv);
+	static void compress(FILE *inputFile, FILE *outputFile, int level);
 
 };
 // end: class

@@ -3191,6 +3191,11 @@ void store_in_header(FILE* f, char* filename, long& total_size)
 	perror(filename);
 }
 
+void GeneralPacker::compress(FILE *inputFile, FILE *outputFile, int level)
+{
+
+}
+
 // Compress/decompress files.  Usage: yz archive files...
 // If archive does not exist, it is created and the named files are
 // compressed.  If there are no file name arguments after the archive,
