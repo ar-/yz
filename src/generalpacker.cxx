@@ -3191,8 +3191,173 @@ void store_in_header(FILE* f, char* filename, long& total_size)
 	perror(filename);
 }
 
-void GeneralPacker::compress(FILE *inputFile, FILE *outputFile, int level)
+// inputFile can be '-' for stdin // argv[2]
+// outputFile can be '-' for stdout // argv[1]
+
+void GeneralPacker::compress(std::string inputFile, std::string outputFile, int level)
 {
+	long total_size = 0;  // uncompressed size of all files
+	FILE *f;
+
+	int argc = 3;
+
+	// Get option
+	int option = '4';
+
+	// Test for archive.  If none, create one and write a header.
+	// The first line is PROGNAME.  This is followed by a list of
+	// file sizes (as decimal numbers) and names, separated by a tab
+	// and ending with \r\n.  The last entry is followed by ^Z
+	Mode mode = DECOMPRESS;
+
+	f = fopen(outputFile.c_str(), "rb");
+	if (!f)
+	{
+		mode = COMPRESS;
+
+		f = fopen(outputFile.c_str(), "wb");
+		if (!f)
+			/*perror(outputFile),*/ exit(1);
+		fprintf(f, "%s -%c\r\n", PROGNAME, option);
+
+		// Get filenames
+
+		int i = 2;
+		std::multimap<int, std::string> filetypes;
+		std::multimap<int, std::string>::iterator it;
+		std::vector<std::string> filenames;
+		//char *filename = inputFile.c_str();
+		string filename = inputFile;
+		filenames.push_back(filename);
+
+
+#pragma GCC diagnostic ignored "-Wsign-compare"
+		for (i = 0; i < filenames.size(); i++)
+#pragma GCC diagnostic warning "-Wsign-compare"
+		{
+			Filter::make(filenames[i].c_str(), NULL);
+			std::pair<int, std::string> p(
+					(1 << 31 - 1)
+							- (fileType * 8 * 16 * 2048 + preprocFlag
+									+ (wrt.longDict + 1) * 16 * 2048
+									+ (wrt.shortDict + 1) * 2048),
+					filenames[i]);
+			PRINT_DICT((" %s\n",filenames[i].c_str()));
+			filetypes.insert(p);
+		}
+
+		for (it = filetypes.begin(); it != filetypes.end(); it++) // multimap is sorted by filetype
+			store_in_header(f, (char*) it->second.c_str(), total_size);
+
+		fputc(26, f);  // EOF
+		fclose(f);
+		f = fopen(outputFile.c_str(), "r+b");
+		if (!f)
+			perror(outputFile.c_str()), exit(1);
+	}
+
+	// Read existing archive. Two pointers (header and body) track the
+	// current filename and current position in the compressed data.
+	long header, body;  // file positions in header, body
+	char *filename = getline(f);  // check header
+	if (!filename || strncmp(filename, PROGNAME " -", strlen(PROGNAME) + 2))
+		fprintf(stderr, "%s: not a " PROGNAME " file\n", outputFile.c_str()), exit(1);
+	option = filename[strlen(filename) - 1];
+	compressionLevel = option - '0';
+	if (compressionLevel < 0 || compressionLevel > 9)
+		compressionLevel = DEFAULT_OPTION;
+
+	{
+		buf.setsize(MEM * 8);
+		FILE *dictfile = fopen("./to_train_models.dic", "rb"), *tmpfi = fopen(
+				"./tmp_tmp_tmp_tmp.dic", "wb");
+		fileType = 0;
+		// AIR
+//		Encoder en(COMPRESS, tmpfi);
+//		en.compress(0);
+//		for (int i = 0; i < 465211; ++i)
+//			en.compress(getc(dictfile));
+//		en.flush();
+//		fclose(tmpfi);
+	}
+	header = ftell(f);
+
+	// Initialize encoder at end of header
+	if (mode == COMPRESS)
+		fseek(f, 0, SEEK_END);
+	else
+	{  // body starts after ^Z in file
+		int c;
+		while ((c = getc(f)) != EOF && c != 26)
+			;
+		if (c != 26)
+			fprintf(stderr, "Archive %s is incomplete\n", outputFile.c_str()), exit(1);
+	}
+	Encoder en(mode, f);
+	body = ftell(f);
+
+	// Compress/decompress files listed on command line, or header if absent.
+	int filenum = 1;  // command line index
+	total_size = 0;
+	while (1)
+	{
+		fseek(f, header, SEEK_SET);
+		if ((filename = getline(f)) == 0)
+			break;
+		size = atol(filename);  // parse size and filename, separated by tab
+		total_size += size;
+		while (*filename && *filename != '\t')
+			++filename;
+		if (*filename == '\t')
+			++filename;
+		printf("%ld\t%s: ", size, filename);
+		fileSize = (int) size;
+
+
+		if (size < 0 || total_size < 0)
+			break;
+		header = ftell(f);
+		fseek(f, body, SEEK_SET);
+
+		// If file exists in COMPRESS mode, compare, else compress/decompress
+		FILE *fi = fopen(filename, "rb");
+		fileType = 0;
+		if (mode == COMPRESS)
+		{
+			if (!fi)
+				perror(filename), exit(1);
+			Filter* fp = Filter::make(filename, &en);   // sets filetype
+			fp->compress(fi, size);
+			printf(" -> %4ld   \n", ftell(f) - body);
+			delete fp;
+		}
+		else
+		{  // DECOMPRESS, first byte determines filter type
+			fileType = en.decompress();
+			Filter* fp = Filter::make(0, &en);
+			if (fi)
+				fp->compare(fi, size);
+			else
+			{  // extract
+				fi = fopen(filename, "wb");
+				if (fi)
+					fp->decompress(fi, size);
+				else
+				{
+					perror(filename);
+					fp->skip(size);
+				}
+			}
+			delete fp;
+		}
+		if (fi)
+			fclose(fi);
+		body = ftell(f);
+	}
+	fseek(f, body, SEEK_SET);
+	en.flush();
+
+
 
 }
 

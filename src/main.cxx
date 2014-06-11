@@ -47,7 +47,17 @@ void printHelp()
 
 int main(int argc, char **argv)
 {
+	if (argc !=3)
+	{
+		cout << "invalid parameters"<< endl ;
+	}
+	FILE* inF = fopen(argv[1], "rb");
+	FILE* outF = fopen(argv[2], "wb");
 
+//	GeneralPacker::compress(inF,outF,5);
+	GeneralPacker::compress(argv[1],argv[2],5);
+
+	return 0;
 	return GeneralPacker::pg_main(argc, argv);
 
 	if(cmdOptionExists(argv, argv+argc, "-h"))
